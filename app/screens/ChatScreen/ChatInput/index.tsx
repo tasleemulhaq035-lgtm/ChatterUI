@@ -85,41 +85,42 @@ const ChatInput = () => {
 
     const getModeConfig = (mode: string | null) => {
         switch(mode) {
-            case 'fix': return { icon: '🪄', name: 'Fix', color: '#00e676', bg: '#00e67620' };
-            case 'logic': return { icon: '🧠', name: 'Logic', color: '#00b0ff', bg: '#00b0ff20' };
-            case 'fun': return { icon: '🎨', name: 'Fun', color: '#ff4081', bg: '#ff408120' };
-            case 'max': return { icon: '✨', name: 'Max', color: '#ffeb3b', bg: '#ffeb3b20' };
+            case 'fix': return { icon: '🪄', name: 'Fix Grammar', color: '#00e676', bg: '#00e67620' };
+            case 'logic': return { icon: '🧠', name: 'Strict Logic', color: '#00b0ff', bg: '#00b0ff20' };
+            case 'fun': return { icon: '🎨', name: 'Creative Mode', color: '#ff4081', bg: '#ff408120' };
+            case 'max': return { icon: '✨', name: 'Max (C.R.E.A.T.E Wrapper)', color: '#ffeb3b', bg: '#ffeb3b20' };
+            case 'enhance': return { icon: '⚡', name: 'AI Enhance (Real Generation)', color: '#b388ff', bg: '#b388ff20' };
             default: return null;
         }
     }
 
-    // ⚡ THE LIVE TEXT REPLACER (C.R.E.A.T.E. FORMULA)
-    const runLiveEnhancer = () => {
+    // ⚡ THE REAL AI ENHANCER LOOP (PHASE 1 HOOK)
+    const runRealEnhancer = () => {
         if (!newMessage || newMessage.trim() === '') {
             Logger.warnToast("Type a prompt first before enhancing!");
             return;
         }
         
         setIsEnhancing(true);
-        setEnhanceProgress(0);
+        setEnhanceProgress(10); 
 
-        // Simulate the AI processing time with a sleek loading bar
-        let progress = 0;
+        // Simulated Progress Bar until we hook up Phase 2!
+        let progress = 10;
         const interval = setInterval(() => {
-            progress += 15;
-            setEnhanceProgress(progress > 100 ? 100 : progress);
-            
-            if (progress >= 100) {
-                clearInterval(interval);
+            progress += 10;
+            setEnhanceProgress(progress > 95 ? 95 : progress); 
+        }, 400);
+
+        // This will be replaced by the ACTUAL Model Inference file in Phase 2
+        setTimeout(() => {
+            clearInterval(interval);
+            setEnhanceProgress(100);
+            setTimeout(() => {
                 setIsEnhancing(false);
-                
-                // Physically replace the text in the box using C.R.E.A.T.E!
-                setNewMessage((prevText) => {
-                    return `Act as a world-class expert.\n\nTask: ${prevText.trim()}\n\nExample: Apply high-quality references and industry standards.\n\nOutput: Format beautifully with markdown and bullet points.\n\nGuidance: Ensure zero hallucinations and step-by-step logic.`;
-                });
-                Logger.infoToast("✨ Prompt Maxed Out!");
-            }
-        }, 120); // Speed of the loading bar
+                setNewMessage(`[THIS WILL BE REPLACED BY REAL AI OUTPUT SOON]\n\nRaw Input: ${newMessage}`);
+                Logger.infoToast("⚡ Hook Ready for AI Engine!");
+            }, 400);
+        }, 4000); 
     };
     // ==========================================
 
@@ -131,7 +132,7 @@ const ChatInput = () => {
     const handleSend = async () => {
         if (newMessage.trim() === '' && attachments.length === 0) return;
 
-        // 🚀 GEMU: Invisible Injection for Fix/Logic/Fun only!
+        // 🚀 GEMU: Invisible Injection
         let finalMessage = newMessage;
         
         if (activeMode === 'fix') {
@@ -140,8 +141,20 @@ const ChatInput = () => {
             finalMessage = "[System: Answer with strict logic, step-by-step reasoning, and high accuracy. No fluff.]\n\n" + finalMessage;
         } else if (activeMode === 'fun') {
             finalMessage = "[System: Be highly creative, engaging, use emojis, and act like a fun persona!]\n\n" + finalMessage;
-        } 
-        // Notice 'max' is gone from here! It physically changes the text now instead of hiding it!
+        } else if (activeMode === 'max') {
+            finalMessage = `[SYSTEM AUTO-ENHANCER ACTIVE]
+You are an Elite AI Prompt Engineer. The user has provided a raw, quick prompt below. Ignore any spelling or grammar mistakes.
+Instead of answering normally, internally upgrade this prompt using the C.R.E.A.T.E. formula before executing it:
+- Character: Assume the role of a world-class expert on this topic.
+- Request: Identify and flawlessly execute the core task.
+- Example: Apply high-quality references and industry standards.
+- Adjustments: Optimize the structure for maximum impact and engagement.
+- Type of output: Format beautifully (use Markdown, tables, or bullets if it makes sense).
+- Extra Guidance: Ensure zero hallucinations and make it easy to understand.
+
+Now, execute the user's raw request using this elite C.R.E.A.T.E. framework:
+` + finalMessage;
+        }
 
         await addEntry(
             userName ?? '',
@@ -192,26 +205,28 @@ const ChatInput = () => {
             }}>
             
             {/* ========================================== */}
-            {/* 🚀 GEMU EDITION: EXPANDABLE MENU           */}
+            {/* 🚀 GEMU EDITION: VERTICAL CHATGPT MENU     */}
             {/* ========================================== */}
             {showModifiers && !isEnhancing && (
-                <Animated.View entering={FadeIn} exiting={FadeOut} style={{ flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 5, paddingTop: 4 }}>
-                    {['fix', 'logic', 'fun', 'max'].map((mode) => {
+                <Animated.View entering={FadeIn} exiting={FadeOut} style={{ flexDirection: 'column', alignItems: 'flex-start', paddingHorizontal: 12, paddingBottom: 8, rowGap: 8 }}>
+                    {['fix', 'logic', 'fun', 'max', 'enhance'].map((mode) => {
                         const config = getModeConfig(mode);
                         return (
                             <TouchableOpacity 
                                 key={mode}
                                 onPress={() => {
-                                    if (mode === 'max') {
-                                        runLiveEnhancer();
+                                    if (mode === 'enhance') {
+                                        runRealEnhancer();
                                         setShowModifiers(false);
                                     } else {
                                         setActiveMode(activeMode === mode ? null : mode);
                                         setShowModifiers(false); 
                                     }
                                 }}
-                                style={{ padding: 8, backgroundColor: '#2d2d2d', borderRadius: 16, flex: 1, marginHorizontal: 2, alignItems: 'center', borderWidth: 1, borderColor: activeMode === mode ? config?.color : 'transparent' }}>
-                                <Text style={{ color: config?.color, fontWeight: 'bold', fontSize: 11 }}>{config?.icon} {config?.name}</Text>
+                                style={{ paddingVertical: 10, paddingHorizontal: 16, backgroundColor: color.neutral._200, borderRadius: 20, borderWidth: 1, borderColor: activeMode === mode ? config?.color : 'transparent', flexDirection: 'row', alignItems: 'center' }}>
+                                <Text style={{ color: color.text._100, fontWeight: '600', fontSize: 14 }}>
+                                    <Text style={{ color: config?.color }}>{config?.icon}</Text>  {config?.name}
+                                </Text>
                             </TouchableOpacity>
                         );
                     })}
@@ -222,12 +237,12 @@ const ChatInput = () => {
             {/* 🚀 GEMU EDITION: THE LIVE LOADING BAR      */}
             {/* ========================================== */}
             {isEnhancing && (
-                <Animated.View entering={FadeIn} exiting={FadeOut} style={{ paddingHorizontal: spacing.m, paddingBottom: 2, paddingTop: 6 }}>
-                    <Text style={{ color: '#ffeb3b', fontSize: 12, marginBottom: 6, fontWeight: 'bold' }}>
-                        ✨ Enhancing Prompt with C.R.E.A.T.E... {enhanceProgress}%
+                <Animated.View entering={FadeIn} exiting={FadeOut} style={{ paddingHorizontal: spacing.m, paddingBottom: 8, paddingTop: 6 }}>
+                    <Text style={{ color: '#b388ff', fontSize: 13, marginBottom: 8, fontWeight: 'bold' }}>
+                        ⚡ Enhancing Prompt with AI... {enhanceProgress}%
                     </Text>
                     <View style={{ height: 6, backgroundColor: color.neutral._300, borderRadius: 3, overflow: 'hidden' }}>
-                        <View style={{ height: '100%', width: `${enhanceProgress}%`, backgroundColor: '#ffeb3b' }} />
+                        <View style={{ height: '100%', width: `${enhanceProgress}%`, backgroundColor: '#b388ff' }} />
                     </View>
                 </Animated.View>
             )}
@@ -400,7 +415,7 @@ const ChatInput = () => {
                 <AnimatedTextInput
                     layout={XAxisOnlyTransition}
                     ref={inputRef}
-                    editable={!isEnhancing} // Lock the box while generating!
+                    editable={!isEnhancing} 
                     style={{
                         color: color.text._100,
                         backgroundColor: color.neutral._100,
@@ -411,7 +426,7 @@ const ChatInput = () => {
                         paddingTop: 12,
                         paddingBottom: 12,
                         maxHeight: 120, 
-                        opacity: isEnhancing ? 0.5 : 1, // Dims while thinking!
+                        opacity: isEnhancing ? 0.5 : 1, 
                     }}
                     onPress={() => {
                         setHideOptions(!!newMessage)
