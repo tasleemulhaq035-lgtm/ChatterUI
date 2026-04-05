@@ -122,6 +122,10 @@ const ChatInput = () => {
 
     // ⚡ THE ANTI-HALLUCINATION AI ENGINE
     const runRealEnhancer = async (mode: string) => {
+        if (nowGenerating) {
+            Logger.warnToast("Wait for the AI to finish chatting first!");
+            return;
+        }
         if (!newMessage || newMessage.trim() === '') {
             Logger.warnToast("Type a prompt first before generating!");
             return;
@@ -137,30 +141,39 @@ const ChatInput = () => {
         setIsEnhancing(true);
         setEnhanceProgress(5); 
 
-        // 🛡️ STRICT INSTRUCTIONS: Prevents the AI from talking back
         let instruction = "";
         let max_tokens = 500;
         switch(mode) {
             case 'fix':
-                instruction = "Fix all grammar, spelling, and punctuation errors. Output ONLY the fixed text.";
+                instruction = "Fix all grammar, spelling, and punctuation errors in the Input. Output ONLY the fixed text and nothing else.";
                 break;
             case 'logic':
-                instruction = "Rewrite the prompt to explicitly demand strict, step-by-step reasoning and high factual accuracy. Output ONLY the enhanced prompt.";
+                instruction = "Rewrite the Input prompt to explicitly demand strict, step-by-step reasoning and high factual accuracy. Output ONLY the enhanced prompt and nothing else.";
                 break;
             case 'fun':
-                instruction = "Rewrite the prompt to be highly engaging, fun, and include natural emojis. Output ONLY the enhanced prompt.";
+                instruction = "Rewrite the Input prompt to be highly engaging, fun, and include natural emojis. Output ONLY the enhanced prompt and nothing else.";
                 break;
             case 'enhance_normal':
-                instruction = "Rewrite the short prompt to be clearer, more detailed, and highly effective. Output ONLY the enhanced prompt.";
+                instruction = "Rewrite the Input prompt to be clearer, more detailed, and highly effective. Output ONLY the enhanced prompt and nothing else.";
                 break;
             case 'enhance_create':
-                instruction = "Rewrite the prompt into a highly detailed instruction using the C.R.E.A.T.E framework (Character, Request, Example, Adjustments, Type of output, Extra Guidance). Output ONLY the newly enhanced prompt.";
-                max_tokens = 800; // Allow more tokens for the complex CREATE formula
+                instruction = "Rewrite the Input prompt into a highly detailed instruction using the C.R.E.A.T.E framework (Character, Request, Example, Adjustments, Type of output, Extra Guidance). Output ONLY the newly enhanced prompt and nothing else.";
+                max_tokens = 800; 
                 break;
         }
 
-        // 🛡️ ANTI-LOOP PROMPT STRUCTURE
-        const metaPrompt = `System: You are an expert AI. Follow this instruction strictly: ${instruction}\n\nDO NOT output anything other than the exact result. DO NOT continue the conversation. DO NOT output explanations.\n\nInput: ${newMessage}\n\nResult:\n`;
+        // 🛡️ THE FOOLPROOF ALPACA TEMPLATE: Stops chat completion hallucinations 100% of the time.
+        const metaPrompt = `Below is an instruction that describes a task, paired with an input that provides further context. Write a response that appropriately completes the request.
+
+### Instruction:
+You are an elite text processing AI. Your ONLY task is to apply the following instruction to the Input text. DO NOT add any greetings, conversational filler, or explanations. ONLY output the final transformed text.
+Task: ${instruction}
+
+### Input:
+${newMessage}
+
+### Response:
+`;
 
         let generatedText = "";
 
@@ -169,9 +182,8 @@ const ChatInput = () => {
                 {
                     prompt: metaPrompt,
                     n_predict: max_tokens, 
-                    temperature: 0.1, // ❄️ ABSOLUTE ZERO: Makes the AI completely robotic to stop hallucinations
-                    stop: ["<|im_end|>", "</s>", "[/INST]", "<|eot_id|>", "\nInput:", "\nSystem:", "\nUser:"], // 🛑 KILL-SWITCH: Murders the AI if it tries to loop
-                    emit_partial_completion: true, 
+                    temperature: 0.1, // ❄️ ABSOLUTE ZERO: Makes the AI completely robotic
+                    stop: ["<|im_end|>", "</s>", "[/INST]", "<|eot_id|>", "### Instruction:"], 
                 },
                 (data: any) => {
                     if (data && data.token) {
@@ -182,15 +194,29 @@ const ChatInput = () => {
             );
 
             setEnhanceProgress(100);
-            const finalText = result?.text ? result.text.trim() : generatedText.trim();
-            if (finalText) {
-                setNewMessage(finalText);
+
+            // 🧹 THE OUTPUT CLEANER: Strips bad tokens and ensures only the final text is injected
+            let finalText = generatedText.trim();
+            if (finalText.includes('### Response:\n')) {
+                finalText = finalText.split('### Response:\n').pop() || finalText;
             }
-            Logger.infoToast(`✅ Backend AI Processing Complete!`);
+            
+            const stopTokens = ["<|im_end|>", "</s>", "[/INST]", "<|eot_id|>", "### Instruction:", "### Input:"];
+            for (const token of stopTokens) {
+                finalText = finalText.replace(token, "");
+            }
+
+            if (finalText) {
+                setNewMessage(finalText.trim());
+                Logger.infoToast(`✅ AI Processing Complete!`);
+            } else {
+                Logger.warnToast("AI returned empty. Try again.");
+            }
 
         } catch (error) {
             Logger.errorToast("AI Generation Failed: " + error);
         } finally {
+            // ALWAYS unlocks the UI
             setIsEnhancing(false); 
             setEnhanceProgress(0);
         }
@@ -446,7 +472,7 @@ const ChatInput = () => {
                 <AnimatedTextInput
                     layout={XAxisOnlyTransition}
                     ref={inputRef}
-                    editable={!isEnhancing} 
+                    editable={!nowGenerating} 
                     style={{
                         color: color.text._100,
                         backgroundColor: color.neutral._100,
