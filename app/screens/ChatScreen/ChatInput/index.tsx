@@ -1,6 +1,6 @@
 import ThemedButton from '@components/buttons/ThemedButton'
 import PopupMenu from '@components/views/PopupMenu'
-import { MaterialIcons } from '@expo/vector-icons'
+import { MaterialIcons, FontAwesome5 } from '@expo/vector-icons'
 import { XAxisOnlyTransition } from '@lib/animations/transitions'
 import { AppSettings } from '@lib/constants/GlobalValues'
 import { generateResponse } from '@lib/engine/Inference'
@@ -26,8 +26,9 @@ import { create } from 'zustand'
 import { useShallow } from 'zustand/react/shallow'
 import ChatOptions from './ChatInputOptions'
 
-// 🚀 GEMU: Importing the raw Llama engine to bypass the chat bubbles!
+// 🚀 GEMU IMPORTS
 import { Llama } from '@lib/engine/Local/LlamaLocal'
+import { SamplersManager } from '@lib/state/SamplerState'
 
 export type Attachment = {
     uri: string
@@ -77,82 +78,107 @@ const ChatInput = () => {
     const [newMessage, setNewMessage] = useState<string>('')
 
     // ==========================================
-    // 🚀 GEMU EDITION: CHATGPT STYLE STATE
+    // 🚀 GEMU EDITION: LM STUDIO THINKING TOGGLE
     // ==========================================
-    const [showModifiers, setShowModifiers] = useState(false);
-    const [activeMode, setActiveMode] = useState<string | null>(null);
+    const { currentConfig, updateCurrentConfig } = SamplersManager.useSamplers(
+        useShallow((state) => ({
+            currentConfig: state.currentConfig,
+            updateCurrentConfig: state.updateCurrentConfig,
+        }))
+    )
     
-    // ⚡ LIVE ENHANCER STATES
-    const [isEnhancing, setIsEnhancing] = useState(false);
-    const [enhanceProgress, setEnhanceProgress] = useState(0);
+    const isThinking = !!currentConfig?.data?.include_reasoning;
 
-    const getModeConfig = (mode: string | null) => {
-        switch(mode) {
-            case 'fix': return { icon: '🪄', name: 'Fix Grammar', color: '#00e676', bg: '#00e67620' };
-            case 'logic': return { icon: '🧠', name: 'Strict Logic', color: '#00b0ff', bg: '#00b0ff20' };
-            case 'fun': return { icon: '🎨', name: 'Creative Mode', color: '#ff4081', bg: '#ff408120' };
-            case 'max': return { icon: '✨', name: 'Max (Invisible Wrapper)', color: '#ffeb3b', bg: '#ffeb3b20' };
-            case 'enhance_normal': return { icon: '🌟', name: 'Normal Enhancing (Live AI)', color: '#8c9eff', bg: '#8c9eff20' };
-            case 'enhance_create': return { icon: '⚡', name: 'C.R.E.A.T.E Enhancing (Live AI)', color: '#b388ff', bg: '#b388ff20' };
-            default: return null;
+    const toggleThinking = () => {
+        if (currentConfig) {
+            updateCurrentConfig({
+                ...currentConfig,
+                data: {
+                    ...currentConfig.data,
+                    include_reasoning: !isThinking,
+                },
+            })
+            Logger.infoToast(`🧠 Thinking Mode ${!isThinking ? 'ON' : 'OFF'}`);
         }
     }
 
     // ==========================================
-    // ⚡ PHASE 2: THE REAL LOCAL AI BACKGROUND ENHANCER
+    // ⚡ LIVE ENHANCER STATES
     // ==========================================
-    const runRealEnhancer = async (type: 'normal' | 'create') => {
+    const [showModifiers, setShowModifiers] = useState(false);
+    const [isEnhancing, setIsEnhancing] = useState(false);
+    const [enhanceProgress, setEnhanceProgress] = useState(0);
+
+    const getModeConfig = (mode: string) => {
+        switch(mode) {
+            case 'fix': return { icon: '🪄', name: 'Fix Grammar (Live AI)', color: '#00e676' };
+            case 'logic': return { icon: '🧠', name: 'Strict Logic (Live AI)', color: '#00b0ff' };
+            case 'fun': return { icon: '🎨', name: 'Creative Mode (Live AI)', color: '#ff4081' };
+            case 'enhance_normal': return { icon: '🌟', name: 'Normal Enhance (Live AI)', color: '#8c9eff' };
+            case 'enhance_create': return { icon: '⚡', name: 'C.R.E.A.T.E Enhance (Live AI)', color: '#b388ff' };
+            default: return null;
+        }
+    }
+
+    const runRealEnhancer = async (mode: string) => {
         if (!newMessage || newMessage.trim() === '') {
-            Logger.warnToast("Type a prompt first before enhancing!");
+            Logger.warnToast("Type a prompt first before generating!");
             return;
         }
         
-        // Grab the raw context directly from your loaded local model
         const llamaContext = Llama.useLlamaModelStore.getState().context;
         if (!llamaContext) {
-            Logger.warnToast("No local model loaded! Please load a model to use AI Enhance.");
+            Logger.warnToast("No local model loaded! Please load a model to use AI Generation.");
             return;
         }
 
         setIsEnhancing(true);
         setEnhanceProgress(5); 
 
-        // Switch between the Normal or the C.R.E.A.T.E Meta-Prompt
-        const metaPrompt = type === 'create' 
-            ? `System: You are an elite Prompt Engineer. Your task is to rewrite the user's short prompt into a highly detailed, professional AI instruction using the C.R.E.A.T.E framework (Character, Request, Example, Adjustments, Type of output, Extra Guidance). Output ONLY the newly enhanced prompt. Do not add any conversational filler.\n\nUser's Raw Prompt: ${newMessage}\n\nEnhanced Prompt:`
-            : `System: You are an expert AI assistant. Your task is to take the user's short prompt and rewrite it to be clearer, more detailed, and highly effective. Output ONLY the enhanced prompt without any conversational filler or introductions.\n\nUser's Raw Prompt: ${newMessage}\n\nEnhanced Prompt:`;
+        let metaPrompt = "";
+        switch(mode) {
+            case 'fix':
+                metaPrompt = `System: You are an expert editor. Fix all grammar, spelling, and punctuation errors in the user's text. Make it sound natural and professional. Output ONLY the fixed text. Do not add any conversational filler.\n\nUser's Raw Text: ${newMessage}\n\nFixed Text:`;
+                break;
+            case 'logic':
+                metaPrompt = `System: You are an expert logician. Rewrite the user's prompt to explicitly demand strict, step-by-step reasoning and high factual accuracy. Output ONLY the enhanced prompt.\n\nUser's Raw Prompt: ${newMessage}\n\nEnhanced Prompt:`;
+                break;
+            case 'fun':
+                metaPrompt = `System: You are a creative writer. Rewrite the user's prompt to be highly engaging, fun, and include natural emojis. Output ONLY the enhanced prompt.\n\nUser's Raw Prompt: ${newMessage}\n\nEnhanced Prompt:`;
+                break;
+            case 'enhance_normal':
+                metaPrompt = `System: You are an expert AI assistant. Rewrite the user's short prompt to be clearer, more detailed, and highly effective. Output ONLY the enhanced prompt without any conversational filler.\n\nUser's Raw Prompt: ${newMessage}\n\nEnhanced Prompt:`;
+                break;
+            case 'enhance_create':
+                metaPrompt = `System: You are an elite Prompt Engineer. Rewrite the user's prompt into a highly detailed instruction using the C.R.E.A.T.E framework (Character, Request, Example, Adjustments, Type of output, Extra Guidance). Output ONLY the newly enhanced prompt.\n\nUser's Raw Prompt: ${newMessage}\n\nEnhanced Prompt:`;
+                break;
+        }
 
         let generatedText = "";
 
         try {
-            // We bypass Inference.ts and run a raw completion directly in the background!
             const result = await llamaContext.completion(
                 {
                     prompt: metaPrompt,
-                    n_predict: 500, // Max tokens for the rewritten prompt
-                    temperature: 0.4, // Low temp for highly accurate rewriting
-                    stop: ["<|im_end|>", "</s>", "[/INST]", "<|eot_id|>"], // Universal stops
+                    n_predict: 500, 
+                    temperature: 0.4, 
+                    stop: ["<|im_end|>", "</s>", "[/INST]", "<|eot_id|>"], 
                 },
                 (data: any) => {
-                    // ⚡ REAL TIME: This fires for every single word the AI generates!
                     generatedText += data.token;
-                    // Increment the loading bar smoothly as words actually come in
                     setEnhanceProgress((prev) => (prev < 95 ? prev + 1 : prev));
                 }
             );
 
-            // Once generation is done, fill the bar and swap the text!
             setEnhanceProgress(100);
-            
-            // Fix the bug: Extract text and immediately unlock the box
             const finalText = result.text ? result.text.trim() : generatedText.trim();
             setNewMessage(finalText);
-            setIsEnhancing(false); // Instantly unlocks!
-            Logger.infoToast(type === 'create' ? "⚡ C.R.E.A.T.E Enhancement Complete!" : "🌟 Normal Enhancement Complete!");
+            setIsEnhancing(false); 
+            Logger.infoToast(`✅ Backend AI Processing Complete!`);
 
         } catch (error) {
-            setIsEnhancing(false); // Guarantee unlock even if it crashes
-            Logger.errorToast("Enhancement Failed: " + error);
+            setIsEnhancing(false); 
+            Logger.errorToast("AI Generation Failed: " + error);
         }
     };
     // ==========================================
@@ -165,34 +191,10 @@ const ChatInput = () => {
     const handleSend = async () => {
         if (newMessage.trim() === '' && attachments.length === 0) return;
 
-        // 🚀 GEMU: Invisible Injection
-        let finalMessage = newMessage;
-        
-        if (activeMode === 'fix') {
-            finalMessage = "[System: Fix all grammar, spelling, and format this text beautifully.]\n\n" + finalMessage;
-        } else if (activeMode === 'logic') {
-            finalMessage = "[System: Answer with strict logic, step-by-step reasoning, and high accuracy. No fluff.]\n\n" + finalMessage;
-        } else if (activeMode === 'fun') {
-            finalMessage = "[System: Be highly creative, engaging, use emojis, and act like a fun persona!]\n\n" + finalMessage;
-        } else if (activeMode === 'max') {
-            finalMessage = `[SYSTEM AUTO-ENHANCER ACTIVE]
-You are an Elite AI Prompt Engineer. The user has provided a raw, quick prompt below. Ignore any spelling or grammar mistakes.
-Instead of answering normally, internally upgrade this prompt using the C.R.E.A.T.E. formula before executing it:
-- Character: Assume the role of a world-class expert on this topic.
-- Request: Identify and flawlessly execute the core task.
-- Example: Apply high-quality references and industry standards.
-- Adjustments: Optimize the structure for maximum impact and engagement.
-- Type of output: Format beautifully (use Markdown, tables, or bullets if it makes sense).
-- Extra Guidance: Ensure zero hallucinations and make it easy to understand.
-
-Now, execute the user's raw request using this elite C.R.E.A.T.E. framework:
-` + finalMessage;
-        }
-
         await addEntry(
             userName ?? '',
             true,
-            finalMessage, 
+            newMessage, 
             attachments.map((item) => item.uri)
         )
         
@@ -200,13 +202,10 @@ Now, execute the user's raw request using this elite C.R.E.A.T.E. framework:
         
         setNewMessage('')
         setAttachments([])
-        setActiveMode(null);
         setShowModifiers(false);
         
         if (swipeId) generateResponse(swipeId)
     }
-
-    const activeConfig = getModeConfig(activeMode);
 
     return (
         <View
@@ -242,24 +241,16 @@ Now, execute the user's raw request using this elite C.R.E.A.T.E. framework:
             {/* ========================================== */}
             {showModifiers && !isEnhancing && (
                 <Animated.View entering={FadeIn} exiting={FadeOut} style={{ flexDirection: 'column', alignItems: 'flex-start', paddingHorizontal: 12, paddingBottom: 8, rowGap: 8 }}>
-                    {['fix', 'logic', 'fun', 'max', 'enhance_normal', 'enhance_create'].map((mode) => {
+                    {['fix', 'logic', 'fun', 'enhance_normal', 'enhance_create'].map((mode) => {
                         const config = getModeConfig(mode);
                         return (
                             <TouchableOpacity 
                                 key={mode}
                                 onPress={() => {
-                                    if (mode === 'enhance_normal') {
-                                        runRealEnhancer('normal');
-                                        setShowModifiers(false);
-                                    } else if (mode === 'enhance_create') {
-                                        runRealEnhancer('create');
-                                        setShowModifiers(false);
-                                    } else {
-                                        setActiveMode(activeMode === mode ? null : mode);
-                                        setShowModifiers(false); 
-                                    }
+                                    runRealEnhancer(mode);
+                                    setShowModifiers(false);
                                 }}
-                                style={{ paddingVertical: 10, paddingHorizontal: 16, backgroundColor: color.neutral._200, borderRadius: 20, borderWidth: 1, borderColor: activeMode === mode ? config?.color : 'transparent', flexDirection: 'row', alignItems: 'center' }}>
+                                style={{ paddingVertical: 10, paddingHorizontal: 16, backgroundColor: color.neutral._200, borderRadius: 20, borderWidth: 1, borderColor: 'transparent', flexDirection: 'row', alignItems: 'center' }}>
                                 <Text style={{ color: color.text._100, fontWeight: '600', fontSize: 14 }}>
                                     <Text style={{ color: config?.color }}>{config?.icon}</Text>  {config?.name}
                                 </Text>
@@ -275,39 +266,13 @@ Now, execute the user's raw request using this elite C.R.E.A.T.E. framework:
             {isEnhancing && (
                 <Animated.View entering={FadeIn} exiting={FadeOut} style={{ paddingHorizontal: spacing.m, paddingBottom: 8, paddingTop: 6 }}>
                     <Text style={{ color: '#b388ff', fontSize: 13, marginBottom: 8, fontWeight: 'bold' }}>
-                        ⚡ Enhancing Prompt with AI... {enhanceProgress}%
+                        ⚡ Processing with Local AI... {enhanceProgress}%
                     </Text>
                     <View style={{ height: 6, backgroundColor: color.neutral._300, borderRadius: 3, overflow: 'hidden' }}>
                         <View style={{ height: '100%', width: `${enhanceProgress}%`, backgroundColor: '#b388ff' }} />
                     </View>
                 </Animated.View>
             )}
-
-            {/* ========================================== */}
-            {/* 🚀 GEMU EDITION: CHATGPT ACTIVE PILL       */}
-            {/* ========================================== */}
-            {activeMode && !showModifiers && !isEnhancing && (
-                <Animated.View entering={FadeIn} exiting={FadeOut} style={{ paddingHorizontal: spacing.m, paddingBottom: 2, paddingTop: 6 }}>
-                    <TouchableOpacity 
-                        onPress={() => setActiveMode(null)}
-                        style={{
-                            alignSelf: 'flex-start',
-                            flexDirection: 'row',
-                            alignItems: 'center',
-                            backgroundColor: activeConfig?.bg,
-                            paddingVertical: 6,
-                            paddingHorizontal: 12,
-                            borderRadius: 16,
-                            borderWidth: 1,
-                            borderColor: activeConfig?.color,
-                        }}>
-                        <Text style={{ color: activeConfig?.color, fontWeight: 'bold', fontSize: 12 }}>
-                            {activeConfig?.icon} {activeConfig?.name}  ✕
-                        </Text>
-                    </TouchableOpacity>
-                </Animated.View>
-            )}
-            {/* ========================================== */}
 
             <Animated.FlatList
                 itemLayoutAnimation={LinearTransition}
@@ -411,6 +376,22 @@ Now, execute the user's raw request using this elite C.R.E.A.T.E. framework:
                                 placement="top"
                             />
                             
+                            {/* 🚀 GEMU EDITION: LM STUDIO THINKING TOGGLE */}
+                            <TouchableOpacity 
+                                onPress={toggleThinking} 
+                                disabled={isEnhancing || nowGenerating}
+                                style={{ 
+                                    padding: 6, 
+                                    backgroundColor: isThinking ? color.primary._600 : color.neutral._200, 
+                                    borderRadius: 16 
+                                }}>
+                                <MaterialIcons 
+                                    name="psychology" 
+                                    size={20} 
+                                    color={isThinking ? color.text._100 : color.text._400} 
+                                />
+                            </TouchableOpacity>
+
                             {/* 🚀 GEMU EDITION: THE SPARKLE TRIGGER BUTTON */}
                             <TouchableOpacity 
                                 onPress={() => setShowModifiers(!showModifiers)} 
