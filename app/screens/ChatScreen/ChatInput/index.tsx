@@ -120,6 +120,7 @@ const ChatInput = () => {
         }
     }
 
+    // ⚡ THE REAL AI ENHANCER LOOP (BULLETPROOF FIX)
     const runRealEnhancer = async (mode: string) => {
         if (!newMessage || newMessage.trim() === '') {
             Logger.warnToast("Type a prompt first before generating!");
@@ -132,6 +133,8 @@ const ChatInput = () => {
             return;
         }
 
+        // Drop the keyboard safely so Android doesn't freeze the cursor!
+        inputRef.current?.blur();
         setIsEnhancing(true);
         setEnhanceProgress(5); 
 
@@ -163,22 +166,29 @@ const ChatInput = () => {
                     n_predict: 500, 
                     temperature: 0.4, 
                     stop: ["<|im_end|>", "</s>", "[/INST]", "<|eot_id|>"], 
+                    emit_partial_completion: true, // This stops the engine from hanging!
                 },
                 (data: any) => {
-                    generatedText += data.token;
-                    setEnhanceProgress((prev) => (prev < 95 ? prev + 1 : prev));
+                    if (data && data.token) {
+                        generatedText += data.token;
+                        setEnhanceProgress((prev) => (prev < 95 ? prev + 1 : prev));
+                    }
                 }
             );
 
             setEnhanceProgress(100);
-            const finalText = result.text ? result.text.trim() : generatedText.trim();
-            setNewMessage(finalText);
-            setIsEnhancing(false); 
+            const finalText = result?.text ? result.text.trim() : generatedText.trim();
+            if (finalText) {
+                setNewMessage(finalText);
+            }
             Logger.infoToast(`✅ Backend AI Processing Complete!`);
 
         } catch (error) {
-            setIsEnhancing(false); 
             Logger.errorToast("AI Generation Failed: " + error);
+        } finally {
+            // THE ABSOLUTE FAILSAFE: Guarantees the box unlocks no matter what!
+            setIsEnhancing(false); 
+            setEnhanceProgress(0);
         }
     };
     // ==========================================
