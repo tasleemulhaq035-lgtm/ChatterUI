@@ -26,6 +26,9 @@ import { create } from 'zustand'
 import { useShallow } from 'zustand/react/shallow'
 import ChatOptions from './ChatInputOptions'
 
+// 🚀 GEMU FIX: Importing the raw Llama engine to bypass the chat bubbles!
+import { Llama } from '@lib/engine/Local/LlamaLocal'
+
 export type Attachment = {
     uri: string
     type: 'image' | 'audio' | 'document'
@@ -94,33 +97,61 @@ const ChatInput = () => {
         }
     }
 
-    // ⚡ THE REAL AI ENHANCER LOOP (PHASE 1 HOOK)
-    const runRealEnhancer = () => {
+    // ==========================================
+    // ⚡ PHASE 2: THE REAL LOCAL AI BACKGROUND ENHANCER
+    // ==========================================
+    const runRealEnhancer = async () => {
         if (!newMessage || newMessage.trim() === '') {
             Logger.warnToast("Type a prompt first before enhancing!");
             return;
         }
         
+        // Grab the raw context directly from your loaded local model
+        const llamaContext = Llama.useLlamaModelStore.getState().context;
+        if (!llamaContext) {
+            Logger.warnToast("No local model loaded! Please load a model to use AI Enhance.");
+            return;
+        }
+
         setIsEnhancing(true);
-        setEnhanceProgress(10); 
+        setEnhanceProgress(5); 
 
-        // Simulated Progress Bar until we hook up Phase 2!
-        let progress = 10;
-        const interval = setInterval(() => {
-            progress += 10;
-            setEnhanceProgress(progress > 95 ? 95 : progress); 
-        }, 400);
+        // The Meta-Prompt that forces the model to rewrite your text
+        const metaPrompt = `System: You are an elite Prompt Engineer. Your task is to rewrite the user's short prompt into a highly detailed, professional AI instruction using the C.R.E.A.T.E framework (Character, Request, Example, Adjustments, Type of output, Extra Guidance). Output ONLY the newly enhanced prompt. Do not add any conversational filler.\n\nUser's Raw Prompt: ${newMessage}\n\nEnhanced Prompt:`;
 
-        // This will be replaced by the ACTUAL Model Inference file in Phase 2
-        setTimeout(() => {
-            clearInterval(interval);
+        let generatedText = "";
+
+        try {
+            // We bypass Inference.ts and run a raw completion directly in the background!
+            const result = await llamaContext.completion(
+                {
+                    prompt: metaPrompt,
+                    n_predict: 500, // Max tokens for the rewritten prompt
+                    temperature: 0.4, // Low temp for highly accurate rewriting
+                    stop: ["<|im_end|>", "</s>", "[/INST]", "<|eot_id|>"], // Universal stops
+                },
+                (data: any) => {
+                    // This callback fires for every single word the AI generates!
+                    generatedText += data.token;
+                    // Increment the loading bar smoothly as words come in
+                    setEnhanceProgress((prev) => (prev < 95 ? prev + 1 : prev));
+                }
+            );
+
+            // Once generation is done, fill the bar and swap the text!
             setEnhanceProgress(100);
             setTimeout(() => {
                 setIsEnhancing(false);
-                setNewMessage(`[THIS WILL BE REPLACED BY REAL AI OUTPUT SOON]\n\nRaw Input: ${newMessage}`);
-                Logger.infoToast("⚡ Hook Ready for AI Engine!");
+                // We use result.text, but fallback to generatedText just in case
+                const finalText = result.text ? result.text.trim() : generatedText.trim();
+                setNewMessage(finalText);
+                Logger.infoToast("⚡ AI Enhancement Complete!");
             }, 400);
-        }, 4000); 
+
+        } catch (error) {
+            setIsEnhancing(false);
+            Logger.errorToast("Enhancement Failed: " + error);
+        }
     };
     // ==========================================
 
