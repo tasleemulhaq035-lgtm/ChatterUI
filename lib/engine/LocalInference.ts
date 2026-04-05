@@ -62,7 +62,7 @@ const getSamplerFields = (max_length?: number) => {
         })
         .reduce((acc, obj) => Object.assign(acc, obj), {})
 }
-// TODO: Use new builders
+
 const buildLocalPayload = async () => {
     const payloadFields = getSamplerFields()
     const rep_pen = payloadFields?.['penalty_repeat']
@@ -102,7 +102,6 @@ const buildLocalPayload = async () => {
                         jinja: true,
                     })
                 if (typeof result === 'string') prompt = result
-                // Currently not used since we dont pass in { jinja: true }
                 else if (typeof result === 'object') {
                     prompt = result.prompt
                     mediaPaths = result.media_paths ?? []
@@ -115,9 +114,6 @@ const buildLocalPayload = async () => {
             Logger.error(`Failed to use template: ${e}`)
         }
 
-        // we assume that if the buffer is filled during completion
-        // this is a continue sequence
-        // we need to remove the trailing <close_tag> and <think> tags
         if (bufferExists && prompt) {
             const removalList = ['<think>', ...outputPrefixes, ...commonStopStrings]
             let trimmedInput = prompt.trim()
@@ -156,44 +152,34 @@ const buildLocalPayload = async () => {
 }
 
 const constructStopSequence = (): string[] => {
-    // kept this helper for extendability
     return Instructs.useInstruct.getState().getStopSequence()
 }
 
 const stopGenerating = () => {
-    // kept this helper for extendability
     Chats.useChatState.getState().stopGenerating()
 }
 
 const constructReplaceStrings = (): string[] => {
-    // default stop strings defined instructs
     const stops: string[] = constructStopSequence()
-    // additional stop strings based on context configuration
-    //    const output: string[] = []
-    //  return [...stops, ...output]
     return stops
 }
 
 const verifyModelLoaded = async (): Promise<boolean> => {
     const model = Llama.useLlamaModelStore.getState().model
 
-    // Model Loading Routine
     if (!model) {
         const lastModel = Llama.useLlamaPreferencesStore.getState().lastModel
         const autoLoad = mmkv.getBoolean(AppSettings.AutoLoadLocal)
-        // If  autoload is disabled, just return
         if (!autoLoad) {
             Logger.warnToast('No Model Loaded')
             return false
         }
 
-        // by default, autoload will attempt to load the last model used
         if (!lastModel) {
             Logger.warnToast('No Auto-Load Model Set')
             return false
         }
 
-        // attempt to load model
         if (lastModel) {
             Logger.infoToast(`Auto-loading Model: ${lastModel.name}`)
             await Llama.useLlamaModelStore.getState().load(lastModel)
@@ -210,12 +196,10 @@ const verifyModelLoaded = async (): Promise<boolean> => {
 
 export const localInference = async () => {
     try {
-        // Model Loading Routine
         if (!(await verifyModelLoaded())) {
             return stopGenerating()
         }
 
-        // verify that model has been loaded
         const context = Llama.useLlamaModelStore.getState().context
 
         if (!context) {
@@ -273,6 +257,60 @@ export const localInference = async () => {
     }
 }
 
+// ==========================================
+// 🚀 GEMU EDITION: LOCAL LIVE TITLE GENERATOR
+// ==========================================
+const generateLocalTitle = async (chatId: number) => {
+    const llamaContext = Llama.useLlamaModelStore.getState().context;
+    if (!llamaContext) return;
+
+    Chats.useChatState.getState().renameChat(chatId, '✨ Naming Chat...');
+
+    const chat = Chats.useChatState.getState().data;
+    if (!chat) return;
+
+    // Grab first 2 user messages and the first AI response to give context
+    const conversation = chat.messages
+        .slice(0, 3)
+        .map(m => `${m.is_user ? 'User' : 'AI'}: ${m.swipes[m.swipe_id]?.swipe || ''}`)
+        .join('\n');
+
+    const metaPrompt = `System: You are an AI that generates extremely short, 2 to 4 word titles for conversations. Output ONLY the title. Do not use quotes or punctuation.\n\nConversation:\n${conversation}\n\nTitle:`;
+
+    let generatedTitle = "";
+    let progress = 10;
+
+    try {
+        const result = await llamaContext.completion(
+            {
+                prompt: metaPrompt,
+                n_predict: 15, // Keep it very short
+                temperature: 0.3,
+                stop: ["\n", "<|im_end|>", "</s>", "[/INST]", "<|eot_id|>"],
+            },
+            (data: any) => {
+                generatedTitle += data.token;
+                progress = Math.min(95, progress + 15);
+                // Update the chat drawer name live with the progress!
+                Chats.useChatState.getState().renameChat(chatId, `✨ Naming... ${progress}%`);
+            }
+        );
+
+        const finalText = result.text ? result.text.trim() : generatedTitle.trim();
+        const cleanTitle = finalText.replace(/["'.]/g, '').replace(/\b\w/g, (c) => c.toUpperCase()).substring(0, 50);
+
+        if (cleanTitle) {
+            Chats.useChatState.getState().renameChat(chatId, cleanTitle);
+        } else {
+            Chats.useChatState.getState().renameChat(chatId, 'New Chat');
+        }
+    } catch (error) {
+        Logger.errorToast("Title Generation Failed: " + error);
+        Chats.useChatState.getState().renameChat(chatId, 'New Chat');
+    }
+};
+// ==========================================
+
 const runLocalCompletion = async (
     payload: NonNullable<Awaited<ReturnType<typeof buildLocalPayload>>>
 ) => {
@@ -299,6 +337,18 @@ const runLocalCompletion = async (
             .setBuffer({ data: (regenCache + text).replaceAll(replace, ''), timings: timings })
         if (mmkv.getBoolean(AppSettings.PrintContext)) Logger.info(`Completion Output:\n${text}`)
         stopGenerating()
+
+        // 🚀 GEMU EDITION: Smart Title Generation Hook
+        setTimeout(() => {
+            const chat = Chats.useChatState.getState().data
+            if (mmkv.getBoolean(AppSettings.AutoGenerateTitle) && chat && chat.name === 'New Chat') {
+                const userMessageCount = chat.messages.filter((m) => m.is_user).length
+                // Wait for exactly 2 user messages
+                if (userMessageCount >= 2) {
+                    generateLocalTitle(chat.id)
+                }
+            }
+        }, 500); // 500ms delay to let the main UI update first
     }
 
     await Llama.useLlamaModelStore
@@ -320,7 +370,6 @@ const localAPIValues: APIValues = {
     configName: 'Local',
 }
 
-// This is a dummy we use to hijack chat completions builder
 const localAPIConfig: APIConfiguration = {
     version: 1,
     name: 'Local',
@@ -379,8 +428,6 @@ const localAPIConfig: APIConfiguration = {
     },
 }
 
-// This is the 'big orchestrator' which compiles fields from
-// the whole app to send inference requests
 const obtainFields = async (): Promise<ContextBuilderParams | void> => {
     try {
         const userState = Characters.useUserStore.getState()
@@ -433,7 +480,6 @@ const obtainFields = async (): Promise<ContextBuilderParams | void> => {
             user: Object.assign({}, userCard),
             messages: [...messages],
             chatTokenizer: async (entry, index) => {
-                // IMPORTANT - we use -1 for dummy entries
                 if (entry.id === -1) return 0
                 return await chatState.getTokenCount(index)
             },
