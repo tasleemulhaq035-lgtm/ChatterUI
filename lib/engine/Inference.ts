@@ -120,8 +120,13 @@ async function chatInferenceStream() {
         const chat = Chats.useChatState.getState().data
         if (!mmkv.getBoolean(AppSettings.AutoGenerateTitle) || !chat || chat?.name !== 'New Chat')
             return
-        Logger.info('Generating Title')
-        titleGeneratorStream(chat.id)
+            
+        // 🚀 GEMU EDITION: Wait for exactly 2 user messages before summarizing!
+        const userMessageCount = chat.messages.filter(m => m.is_user).length;
+        if (userMessageCount === 2) {
+            Logger.info('Context gathered! Generating Chat Title...')
+            titleGeneratorStream(chat.id)
+        }
     }
     const abort = await buildAndSendRequest(fields)
     useInference.getState().setAbort(() => {
