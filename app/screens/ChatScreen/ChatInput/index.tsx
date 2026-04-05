@@ -26,7 +26,7 @@ import { create } from 'zustand'
 import { useShallow } from 'zustand/react/shallow'
 import ChatOptions from './ChatInputOptions'
 
-// 🚀 GEMU FIX: Importing the raw Llama engine to bypass the chat bubbles!
+// 🚀 GEMU: Importing the raw Llama engine to bypass the chat bubbles!
 import { Llama } from '@lib/engine/Local/LlamaLocal'
 
 export type Attachment = {
@@ -91,8 +91,9 @@ const ChatInput = () => {
             case 'fix': return { icon: '🪄', name: 'Fix Grammar', color: '#00e676', bg: '#00e67620' };
             case 'logic': return { icon: '🧠', name: 'Strict Logic', color: '#00b0ff', bg: '#00b0ff20' };
             case 'fun': return { icon: '🎨', name: 'Creative Mode', color: '#ff4081', bg: '#ff408120' };
-            case 'max': return { icon: '✨', name: 'Max (C.R.E.A.T.E Wrapper)', color: '#ffeb3b', bg: '#ffeb3b20' };
-            case 'enhance': return { icon: '⚡', name: 'AI Enhance (Real Generation)', color: '#b388ff', bg: '#b388ff20' };
+            case 'max': return { icon: '✨', name: 'Max (Invisible Wrapper)', color: '#ffeb3b', bg: '#ffeb3b20' };
+            case 'enhance_normal': return { icon: '🌟', name: 'Normal Enhancing (Live AI)', color: '#8c9eff', bg: '#8c9eff20' };
+            case 'enhance_create': return { icon: '⚡', name: 'C.R.E.A.T.E Enhancing (Live AI)', color: '#b388ff', bg: '#b388ff20' };
             default: return null;
         }
     }
@@ -100,7 +101,7 @@ const ChatInput = () => {
     // ==========================================
     // ⚡ PHASE 2: THE REAL LOCAL AI BACKGROUND ENHANCER
     // ==========================================
-    const runRealEnhancer = async () => {
+    const runRealEnhancer = async (type: 'normal' | 'create') => {
         if (!newMessage || newMessage.trim() === '') {
             Logger.warnToast("Type a prompt first before enhancing!");
             return;
@@ -116,8 +117,10 @@ const ChatInput = () => {
         setIsEnhancing(true);
         setEnhanceProgress(5); 
 
-        // The Meta-Prompt that forces the model to rewrite your text
-        const metaPrompt = `System: You are an elite Prompt Engineer. Your task is to rewrite the user's short prompt into a highly detailed, professional AI instruction using the C.R.E.A.T.E framework (Character, Request, Example, Adjustments, Type of output, Extra Guidance). Output ONLY the newly enhanced prompt. Do not add any conversational filler.\n\nUser's Raw Prompt: ${newMessage}\n\nEnhanced Prompt:`;
+        // Switch between the Normal or the C.R.E.A.T.E Meta-Prompt
+        const metaPrompt = type === 'create' 
+            ? `System: You are an elite Prompt Engineer. Your task is to rewrite the user's short prompt into a highly detailed, professional AI instruction using the C.R.E.A.T.E framework (Character, Request, Example, Adjustments, Type of output, Extra Guidance). Output ONLY the newly enhanced prompt. Do not add any conversational filler.\n\nUser's Raw Prompt: ${newMessage}\n\nEnhanced Prompt:`
+            : `System: You are an expert AI assistant. Your task is to take the user's short prompt and rewrite it to be clearer, more detailed, and highly effective. Output ONLY the enhanced prompt without any conversational filler or introductions.\n\nUser's Raw Prompt: ${newMessage}\n\nEnhanced Prompt:`;
 
         let generatedText = "";
 
@@ -131,25 +134,24 @@ const ChatInput = () => {
                     stop: ["<|im_end|>", "</s>", "[/INST]", "<|eot_id|>"], // Universal stops
                 },
                 (data: any) => {
-                    // This callback fires for every single word the AI generates!
+                    // ⚡ REAL TIME: This fires for every single word the AI generates!
                     generatedText += data.token;
-                    // Increment the loading bar smoothly as words come in
+                    // Increment the loading bar smoothly as words actually come in
                     setEnhanceProgress((prev) => (prev < 95 ? prev + 1 : prev));
                 }
             );
 
             // Once generation is done, fill the bar and swap the text!
             setEnhanceProgress(100);
-            setTimeout(() => {
-                setIsEnhancing(false);
-                // We use result.text, but fallback to generatedText just in case
-                const finalText = result.text ? result.text.trim() : generatedText.trim();
-                setNewMessage(finalText);
-                Logger.infoToast("⚡ AI Enhancement Complete!");
-            }, 400);
+            
+            // Fix the bug: Extract text and immediately unlock the box
+            const finalText = result.text ? result.text.trim() : generatedText.trim();
+            setNewMessage(finalText);
+            setIsEnhancing(false); // Instantly unlocks!
+            Logger.infoToast(type === 'create' ? "⚡ C.R.E.A.T.E Enhancement Complete!" : "🌟 Normal Enhancement Complete!");
 
         } catch (error) {
-            setIsEnhancing(false);
+            setIsEnhancing(false); // Guarantee unlock even if it crashes
             Logger.errorToast("Enhancement Failed: " + error);
         }
     };
@@ -240,14 +242,17 @@ Now, execute the user's raw request using this elite C.R.E.A.T.E. framework:
             {/* ========================================== */}
             {showModifiers && !isEnhancing && (
                 <Animated.View entering={FadeIn} exiting={FadeOut} style={{ flexDirection: 'column', alignItems: 'flex-start', paddingHorizontal: 12, paddingBottom: 8, rowGap: 8 }}>
-                    {['fix', 'logic', 'fun', 'max', 'enhance'].map((mode) => {
+                    {['fix', 'logic', 'fun', 'max', 'enhance_normal', 'enhance_create'].map((mode) => {
                         const config = getModeConfig(mode);
                         return (
                             <TouchableOpacity 
                                 key={mode}
                                 onPress={() => {
-                                    if (mode === 'enhance') {
-                                        runRealEnhancer();
+                                    if (mode === 'enhance_normal') {
+                                        runRealEnhancer('normal');
+                                        setShowModifiers(false);
+                                    } else if (mode === 'enhance_create') {
+                                        runRealEnhancer('create');
                                         setShowModifiers(false);
                                     } else {
                                         setActiveMode(activeMode === mode ? null : mode);
