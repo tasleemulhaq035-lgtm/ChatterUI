@@ -111,16 +111,16 @@ const ChatInput = () => {
 
     const getModeConfig = (mode: string) => {
         switch(mode) {
-            case 'fix': return { icon: '🪄', name: 'Fix Grammar (Live AI)', color: '#00e676' };
-            case 'logic': return { icon: '🧠', name: 'Strict Logic (Live AI)', color: '#00b0ff' };
-            case 'fun': return { icon: '🎨', name: 'Creative Mode (Live AI)', color: '#ff4081' };
-            case 'enhance_normal': return { icon: '🌟', name: 'Normal Enhance (Live AI)', color: '#8c9eff' };
-            case 'enhance_create': return { icon: '⚡', name: 'C.R.E.A.T.E Enhance (Live AI)', color: '#b388ff' };
+            case 'fix': return { icon: '🪄', name: 'Fix Grammar', color: '#00e676' };
+            case 'logic': return { icon: '🧠', name: 'Strict Logic', color: '#00b0ff' };
+            case 'fun': return { icon: '🎨', name: 'Creative Mode', color: '#ff4081' };
+            case 'enhance_normal': return { icon: '🌟', name: 'Normal Enhance', color: '#8c9eff' };
+            case 'enhance_create': return { icon: '⚡', name: 'C.R.E.A.T.E Enhance', color: '#b388ff' };
             default: return null;
         }
     }
 
-    // ⚡ THE REAL AI ENHANCER LOOP (BULLETPROOF FIX)
+    // ⚡ THE ANTI-HALLUCINATION AI ENGINE
     const runRealEnhancer = async (mode: string) => {
         if (!newMessage || newMessage.trim() === '') {
             Logger.warnToast("Type a prompt first before generating!");
@@ -133,29 +133,34 @@ const ChatInput = () => {
             return;
         }
 
-        // Drop the keyboard safely so Android doesn't freeze the cursor!
         inputRef.current?.blur();
         setIsEnhancing(true);
         setEnhanceProgress(5); 
 
-        let metaPrompt = "";
+        // 🛡️ STRICT INSTRUCTIONS: Prevents the AI from talking back
+        let instruction = "";
+        let max_tokens = 500;
         switch(mode) {
             case 'fix':
-                metaPrompt = `System: You are an expert editor. Fix all grammar, spelling, and punctuation errors in the user's text. Make it sound natural and professional. Output ONLY the fixed text. Do not add any conversational filler.\n\nUser's Raw Text: ${newMessage}\n\nFixed Text:`;
+                instruction = "Fix all grammar, spelling, and punctuation errors. Output ONLY the fixed text.";
                 break;
             case 'logic':
-                metaPrompt = `System: You are an expert logician. Rewrite the user's prompt to explicitly demand strict, step-by-step reasoning and high factual accuracy. Output ONLY the enhanced prompt.\n\nUser's Raw Prompt: ${newMessage}\n\nEnhanced Prompt:`;
+                instruction = "Rewrite the prompt to explicitly demand strict, step-by-step reasoning and high factual accuracy. Output ONLY the enhanced prompt.";
                 break;
             case 'fun':
-                metaPrompt = `System: You are a creative writer. Rewrite the user's prompt to be highly engaging, fun, and include natural emojis. Output ONLY the enhanced prompt.\n\nUser's Raw Prompt: ${newMessage}\n\nEnhanced Prompt:`;
+                instruction = "Rewrite the prompt to be highly engaging, fun, and include natural emojis. Output ONLY the enhanced prompt.";
                 break;
             case 'enhance_normal':
-                metaPrompt = `System: You are an expert AI assistant. Rewrite the user's short prompt to be clearer, more detailed, and highly effective. Output ONLY the enhanced prompt without any conversational filler.\n\nUser's Raw Prompt: ${newMessage}\n\nEnhanced Prompt:`;
+                instruction = "Rewrite the short prompt to be clearer, more detailed, and highly effective. Output ONLY the enhanced prompt.";
                 break;
             case 'enhance_create':
-                metaPrompt = `System: You are an elite Prompt Engineer. Rewrite the user's prompt into a highly detailed instruction using the C.R.E.A.T.E framework (Character, Request, Example, Adjustments, Type of output, Extra Guidance). Output ONLY the newly enhanced prompt.\n\nUser's Raw Prompt: ${newMessage}\n\nEnhanced Prompt:`;
+                instruction = "Rewrite the prompt into a highly detailed instruction using the C.R.E.A.T.E framework (Character, Request, Example, Adjustments, Type of output, Extra Guidance). Output ONLY the newly enhanced prompt.";
+                max_tokens = 800; // Allow more tokens for the complex CREATE formula
                 break;
         }
+
+        // 🛡️ ANTI-LOOP PROMPT STRUCTURE
+        const metaPrompt = `System: You are an expert AI. Follow this instruction strictly: ${instruction}\n\nDO NOT output anything other than the exact result. DO NOT continue the conversation. DO NOT output explanations.\n\nInput: ${newMessage}\n\nResult:\n`;
 
         let generatedText = "";
 
@@ -163,10 +168,10 @@ const ChatInput = () => {
             const result = await llamaContext.completion(
                 {
                     prompt: metaPrompt,
-                    n_predict: 500, 
-                    temperature: 0.4, 
-                    stop: ["<|im_end|>", "</s>", "[/INST]", "<|eot_id|>"], 
-                    emit_partial_completion: true, // This stops the engine from hanging!
+                    n_predict: max_tokens, 
+                    temperature: 0.1, // ❄️ ABSOLUTE ZERO: Makes the AI completely robotic to stop hallucinations
+                    stop: ["<|im_end|>", "</s>", "[/INST]", "<|eot_id|>", "\nInput:", "\nSystem:", "\nUser:"], // 🛑 KILL-SWITCH: Murders the AI if it tries to loop
+                    emit_partial_completion: true, 
                 },
                 (data: any) => {
                     if (data && data.token) {
@@ -186,7 +191,6 @@ const ChatInput = () => {
         } catch (error) {
             Logger.errorToast("AI Generation Failed: " + error);
         } finally {
-            // THE ABSOLUTE FAILSAFE: Guarantees the box unlocks no matter what!
             setIsEnhancing(false); 
             setEnhanceProgress(0);
         }
