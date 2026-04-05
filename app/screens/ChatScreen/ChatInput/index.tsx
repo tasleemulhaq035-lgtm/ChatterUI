@@ -120,7 +120,7 @@ const ChatInput = () => {
         }
     }
 
-    // ⚡ THE ANTI-HALLUCINATION AI ENGINE
+    // ⚡ THE TITANIUM ANTI-HALLUCINATION AI ENGINE
     const runRealEnhancer = async (mode: string) => {
         if (nowGenerating) {
             Logger.warnToast("Wait for the AI to finish chatting first!");
@@ -145,35 +145,28 @@ const ChatInput = () => {
         let max_tokens = 500;
         switch(mode) {
             case 'fix':
-                instruction = "Fix all grammar, spelling, and punctuation errors in the Input. Output ONLY the fixed text and nothing else.";
+                instruction = "Fix all grammar, spelling, and punctuation errors. Output the corrected text only.";
                 break;
             case 'logic':
-                instruction = "Rewrite the Input prompt to explicitly demand strict, step-by-step reasoning and high factual accuracy. Output ONLY the enhanced prompt and nothing else.";
+                instruction = "Rewrite this prompt to explicitly demand strict, step-by-step reasoning and factual accuracy.";
                 break;
             case 'fun':
-                instruction = "Rewrite the Input prompt to be highly engaging, fun, and include natural emojis. Output ONLY the enhanced prompt and nothing else.";
+                instruction = "Rewrite this prompt to be highly engaging, fun, and include natural emojis.";
                 break;
             case 'enhance_normal':
-                instruction = "Rewrite the Input prompt to be clearer, more detailed, and highly effective. Output ONLY the enhanced prompt and nothing else.";
+                instruction = "Rewrite this short prompt to be clearer, more detailed, and highly effective.";
                 break;
             case 'enhance_create':
-                instruction = "Rewrite the Input prompt into a highly detailed instruction using the C.R.E.A.T.E framework (Character, Request, Example, Adjustments, Type of output, Extra Guidance). Output ONLY the newly enhanced prompt and nothing else.";
+                instruction = "Rewrite this prompt into a highly detailed instruction using the C.R.E.A.T.E framework (Character, Request, Example, Adjustments, Type of output, Extra Guidance).";
                 max_tokens = 800; 
                 break;
         }
 
-        // 🛡️ THE FOOLPROOF ALPACA TEMPLATE: Stops chat completion hallucinations 100% of the time.
-        const metaPrompt = `Below is an instruction that describes a task, paired with an input that provides further context. Write a response that appropriately completes the request.
-
-### Instruction:
-You are an elite text processing AI. Your ONLY task is to apply the following instruction to the Input text. DO NOT add any greetings, conversational filler, or explanations. ONLY output the final transformed text.
-Task: ${instruction}
-
-### Input:
-${newMessage}
-
-### Response:
-`;
+        // 🛡️ STRICT TASK PROMPT: No chat formats, just pure task execution.
+        const metaPrompt = `[INST] You are an AI text editor. Follow the Rule strictly. Output the resulting text and absolutely nothing else. Do not add quotes, explanations, or formatting.
+Rule: ${instruction}
+Input: ${newMessage}
+[/INST]`;
 
         let generatedText = "";
 
@@ -182,8 +175,10 @@ ${newMessage}
                 {
                     prompt: metaPrompt,
                     n_predict: max_tokens, 
-                    temperature: 0.1, // ❄️ ABSOLUTE ZERO: Makes the AI completely robotic
-                    stop: ["<|im_end|>", "</s>", "[/INST]", "<|eot_id|>", "### Instruction:"], 
+                    temperature: 0.1, 
+                    penalty_repeat: 1.18, // 🛑 REPETITION KILLER: Destroys infinite loops!
+                    stop: ["<|im_end|>", "</s>", "[/INST]", "<|eot_id|>", "Explanation:", "###", "Note:"], // 🔪 AGGRESSIVE STOP TOKENS
+                    emit_partial_completion: true, 
                 },
                 (data: any) => {
                     if (data && data.token) {
@@ -195,20 +190,23 @@ ${newMessage}
 
             setEnhanceProgress(100);
 
-            // 🧹 THE OUTPUT CLEANER: Strips bad tokens and ensures only the final text is injected
-            let finalText = generatedText.trim();
-            if (finalText.includes('### Response:\n')) {
-                finalText = finalText.split('### Response:\n').pop() || finalText;
-            }
+            // 🧹 THE POST-PROCESS SCRUBBER: Eliminates quotes and conversational garbage
+            let finalText = result?.text ? result.text.trim() : generatedText.trim();
             
-            const stopTokens = ["<|im_end|>", "</s>", "[/INST]", "<|eot_id|>", "### Instruction:", "### Input:"];
-            for (const token of stopTokens) {
-                finalText = finalText.replace(token, "");
+            // 1. Strip surrounding quotation marks if the AI added them
+            if (finalText.startsWith('"') && finalText.endsWith('"')) {
+                finalText = finalText.substring(1, finalText.length - 1).trim();
+            }
+            if (finalText.startsWith("'") && finalText.endsWith("'")) {
+                finalText = finalText.substring(1, finalText.length - 1).trim();
             }
 
+            // 2. Strip standard conversational filler
+            finalText = finalText.replace(/^(Here is the .*?:|Sure, .*?:|Here's the .*?:)/i, '').trim();
+
             if (finalText) {
-                setNewMessage(finalText.trim());
-                Logger.infoToast(`✅ AI Processing Complete!`);
+                setNewMessage(finalText);
+                Logger.infoToast(`✅ Enhancement Complete!`);
             } else {
                 Logger.warnToast("AI returned empty. Try again.");
             }
@@ -216,7 +214,6 @@ ${newMessage}
         } catch (error) {
             Logger.errorToast("AI Generation Failed: " + error);
         } finally {
-            // ALWAYS unlocks the UI
             setIsEnhancing(false); 
             setEnhanceProgress(0);
         }
