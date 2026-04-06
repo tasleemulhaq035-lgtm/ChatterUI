@@ -120,7 +120,7 @@ const ChatInput = () => {
         }
     }
 
-    // ⚡ THE TITANIUM ANTI-HALLUCINATION AI ENGINE
+    // ⚡ THE SMART AUTO-DETECTING AI ENGINE
     const runRealEnhancer = async (mode: string) => {
         if (nowGenerating) {
             Logger.warnToast("Wait for the AI to finish chatting first!");
@@ -132,6 +132,8 @@ const ChatInput = () => {
         }
         
         const llamaContext = Llama.useLlamaModelStore.getState().context;
+        const loadedModelName = Llama.useLlamaModelStore.getState().model?.name?.toLowerCase() || "";
+        
         if (!llamaContext) {
             Logger.warnToast("No local model loaded! Please load a model to use AI Generation.");
             return;
@@ -145,7 +147,7 @@ const ChatInput = () => {
         let max_tokens = 500;
         switch(mode) {
             case 'fix':
-                instruction = "Fix all grammar, spelling, and punctuation errors. Output the corrected text only.";
+                instruction = "Fix all grammar, spelling, and punctuation errors. Make it sound natural.";
                 break;
             case 'logic':
                 instruction = "Rewrite this prompt to explicitly demand strict, step-by-step reasoning and factual accuracy.";
@@ -162,11 +164,30 @@ const ChatInput = () => {
                 break;
         }
 
-        // 🛡️ STRICT TASK PROMPT: No chat formats, just pure task execution.
-        const metaPrompt = `[INST] You are an AI text editor. Follow the Rule strictly. Output the resulting text and absolutely nothing else. Do not add quotes, explanations, or formatting.
-Rule: ${instruction}
-Input: ${newMessage}
-[/INST]`;
+        // 🧠 SMART FORMATTER: Automatically uses the correct tags for Llama 3, Mistral, or default!
+        let sysStart = "<|im_start|>system\n";
+        let sysEnd = "<|im_end|>\n";
+        let userStart = "<|im_start|>user\n";
+        let asstStart = "<|im_end|>\n<|im_start|>assistant\n";
+
+        if (loadedModelName.includes('llama')) {
+            sysStart = "<|start_header_id|>system<|end_header_id|>\n\n";
+            sysEnd = "<|eot_id|>";
+            userStart = "<|start_header_id|>user<|end_header_id|>\n\n";
+            asstStart = "<|eot_id|><|start_header_id|>assistant<|end_header_id|>\n\n";
+        } else if (loadedModelName.includes('mistral')) {
+            sysStart = "<s>[INST] ";
+            sysEnd = " ";
+            userStart = "";
+            asstStart = " [/INST] ";
+        } else if (loadedModelName.includes('alpaca')) {
+            sysStart = "";
+            sysEnd = "\n\n";
+            userStart = "### Instruction:\n";
+            asstStart = "\n\n### Response:\n";
+        }
+
+        const metaPrompt = `${sysStart}You are an elite text editor. Your ONLY task is to apply the following instruction to the Input text. Output ONLY the final transformed text. Do not add quotes, explanations, or conversational filler.${sysEnd}${userStart}Instruction: ${instruction}\nInput text: ${newMessage}${asstStart}`;
 
         let generatedText = "";
 
@@ -175,9 +196,9 @@ Input: ${newMessage}
                 {
                     prompt: metaPrompt,
                     n_predict: max_tokens, 
-                    temperature: 0.1, 
-                    penalty_repeat: 1.18, // 🛑 REPETITION KILLER: Destroys infinite loops!
-                    stop: ["<|im_end|>", "</s>", "[/INST]", "<|eot_id|>", "Explanation:", "###", "Note:"], // 🔪 AGGRESSIVE STOP TOKENS
+                    temperature: 0.2, // Slightly higher so it doesn't freeze up, but low enough to stop hallucinations
+                    penalty_repeat: 1.15, 
+                    stop: ["<|im_end|>", "</s>", "[/INST]", "<|eot_id|>", "Explanation:", "Here is the"], 
                     emit_partial_completion: true, 
                 },
                 (data: any) => {
@@ -190,10 +211,10 @@ Input: ${newMessage}
 
             setEnhanceProgress(100);
 
-            // 🧹 THE POST-PROCESS SCRUBBER: Eliminates quotes and conversational garbage
+            // 🧹 SMART POST-PROCESS CLEANER
             let finalText = result?.text ? result.text.trim() : generatedText.trim();
             
-            // 1. Strip surrounding quotation marks if the AI added them
+            // Strip surrounding quotes
             if (finalText.startsWith('"') && finalText.endsWith('"')) {
                 finalText = finalText.substring(1, finalText.length - 1).trim();
             }
@@ -201,11 +222,14 @@ Input: ${newMessage}
                 finalText = finalText.substring(1, finalText.length - 1).trim();
             }
 
-            // 2. Strip standard conversational filler
-            finalText = finalText.replace(/^(Here is the .*?:|Sure, .*?:|Here's the .*?:)/i, '').trim();
+            // Remove rogue stop tokens that snuck in
+            const stopTokens = ["<|im_end|>", "</s>", "[/INST]", "<|eot_id|>"];
+            for (const token of stopTokens) {
+                finalText = finalText.replace(token, "");
+            }
 
             if (finalText) {
-                setNewMessage(finalText);
+                setNewMessage(finalText.trim());
                 Logger.infoToast(`✅ Enhancement Complete!`);
             } else {
                 Logger.warnToast("AI returned empty. Try again.");
