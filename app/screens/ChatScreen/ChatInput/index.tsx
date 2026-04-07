@@ -109,7 +109,6 @@ const ChatInput = () => {
     const [isEnhancing, setIsEnhancing] = useState(false);
     const [enhanceProgress, setEnhanceProgress] = useState(0);
 
-    // Format Cycler Logic
     const formats = ['Auto', 'Llama 3', 'ChatML', 'Alpaca', 'Mistral', 'Raw'];
     const [formatIndex, setFormatIndex] = useState(0);
     const currentFormatName = formats[formatIndex];
@@ -158,19 +157,19 @@ const ChatInput = () => {
         let max_tokens = 500;
         switch(mode) {
             case 'fix':
-                instruction = "Fix all grammar and spelling errors in the user's input. Only output the corrected text.";
+                instruction = "Correct all grammar and spelling errors. Do not change the meaning.";
                 break;
             case 'logic':
-                instruction = "Rewrite the user's prompt to explicitly demand strict, step-by-step reasoning and factual accuracy.";
+                instruction = "Rewrite to explicitly demand strict, step-by-step reasoning and factual accuracy.";
                 break;
             case 'fun':
-                instruction = "Rewrite the user's prompt to be highly engaging, fun, and include natural emojis.";
+                instruction = "Rewrite to be highly engaging, fun, and include natural emojis.";
                 break;
             case 'enhance_normal':
-                instruction = "Rewrite the user's prompt to be clearer, more detailed, and highly effective.";
+                instruction = "Rewrite to be clearer, more detailed, and highly effective.";
                 break;
             case 'enhance_create':
-                instruction = "Rewrite the user's prompt into a highly detailed instruction using the C.R.E.A.T.E framework (Character, Request, Example, Adjustments, Type of output, Extra Guidance).";
+                instruction = "Rewrite into a highly detailed instruction using the C.R.E.A.T.E framework (Character, Request, Example, Adjustments, Type of output, Extra Guidance).";
                 max_tokens = 800; 
                 break;
         }
@@ -183,20 +182,24 @@ const ChatInput = () => {
             else activeFormat = 'ChatML'; 
         }
 
+        // 🛡️ THE TRIPLE-QUOTE LOCKDOWN: Forces the AI to treat input as raw text, not a conversation!
+        const systemPrompt = `You are a text rewriting engine. Your ONLY job is to rewrite the text provided by the user based on the given rule. DO NOT answer questions. DO NOT interact. DO NOT output conversational filler. ONLY output the rewritten text.`;
+        const userPrompt = `Rule: ${instruction}\n\nText to rewrite:\n"""\n${newMessage}\n"""`;
+
         let metaPrompt = "";
         let stopTokens = ["<|im_end|>", "</s>", "[/INST]", "<|eot_id|>"];
 
         if (activeFormat === 'Llama 3') {
-            metaPrompt = `<|start_header_id|>system<|end_header_id|>\n\nYou are a precise text-processing AI. You only execute the instruction on the provided input. You never add conversational filler.<|eot_id|><|start_header_id|>user<|end_header_id|>\n\nInstruction: ${instruction}\n\nInput: ${newMessage}<|eot_id|><|start_header_id|>assistant<|end_header_id|>\n\n`;
+            metaPrompt = `<|start_header_id|>system<|end_header_id|>\n\n${systemPrompt}<|eot_id|><|start_header_id|>user<|end_header_id|>\n\n${userPrompt}<|eot_id|><|start_header_id|>assistant<|end_header_id|>\n\n`;
         } else if (activeFormat === 'ChatML') {
-            metaPrompt = `<|im_start|>system\nYou are a precise text-processing AI. You only execute the instruction on the provided input. You never add conversational filler.<|im_end|>\n<|im_start|>user\nInstruction: ${instruction}\n\nInput: ${newMessage}<|im_end|>\n<|im_start|>assistant\n`;
+            metaPrompt = `<|im_start|>system\n${systemPrompt}<|im_end|>\n<|im_start|>user\n${userPrompt}<|im_end|>\n<|im_start|>assistant\n`;
         } else if (activeFormat === 'Alpaca') {
-            metaPrompt = `Below is an instruction that describes a task, paired with an input that provides further context. Write a response that appropriately completes the request.\n\n### Instruction:\n${instruction}\n\n### Input:\n${newMessage}\n\n### Response:\n`;
+            metaPrompt = `${systemPrompt}\n\n### Instruction:\n${userPrompt}\n\n### Response:\n`;
             stopTokens.push("### Instruction:", "### Input:");
         } else if (activeFormat === 'Mistral') {
-            metaPrompt = `<s>[INST] You are a precise text-processing AI. Execute this instruction on the input. Do not add conversational filler.\n\nInstruction: ${instruction}\n\nInput: ${newMessage} [/INST]`;
+            metaPrompt = `<s>[INST] ${systemPrompt}\n\n${userPrompt} [/INST]`;
         } else {
-            metaPrompt = `System: You are a precise text editor. Output ONLY the rewritten text.\nInstruction: ${instruction}\nInput: ${newMessage}\nOutput:\n`;
+            metaPrompt = `System: ${systemPrompt}\nUser: ${userPrompt}\nOutput:\n`;
         }
 
         let generatedText = "";
@@ -221,15 +224,19 @@ const ChatInput = () => {
 
             setEnhanceProgress(100);
 
-            // 🧹 AGGRESSIVE TERMINATOR SCRUBBER (Annihilates "Answer:" and quotes)
+            // 🧹 THE ULTIMATE SCRUBBER (Annihilates all filler and quotes)
             let finalText = result?.text ? result.text.trim() : generatedText.trim();
             
-            // 1. Destroy prefix garbage like "Answer:", "Output:", "**Response:**", etc.
-            const prefixRegex = /^(answer:|output:|response:|enhanced prompt:|fixed text:|\*\*answer:\*\*|\*\*output:\*\*|here is the.*?:|sure,.*?:|here's the.*?:|here is your.*?:|\*answer\*|\*output\*)/i;
-            finalText = finalText.replace(prefixRegex, '').trim();
+            finalText = finalText.replace(/^(here is the.*?:\s*|sure.*?:\s*|here's the.*?:\s*|here is your.*?:\s*)/is, '').trim();
+            finalText = finalText.replace(/^(\*\*Response:\*\*|\*\*Answer:\*\*|\*\*Output:\*\*|Response:|Answer:|Output:|Enhanced Prompt:|Fixed Text:)\s*/is, '').trim();
 
-            // 2. Destroy surrounding quotation marks (standard and smart quotes)
-            finalText = finalText.replace(/^["'“”]([\s\S]*?)["'“”]$/g, '$1').trim();
+            if (finalText.startsWith('"""') && finalText.endsWith('"""')) {
+                finalText = finalText.substring(3, finalText.length - 3).trim();
+            } else if (finalText.startsWith('"') && finalText.endsWith('"')) {
+                finalText = finalText.substring(1, finalText.length - 1).trim();
+            } else if (finalText.startsWith("'") && finalText.endsWith("'")) {
+                finalText = finalText.substring(1, finalText.length - 1).trim();
+            }
 
             if (finalText && finalText.length > 0) {
                 setNewMessage(finalText);
@@ -238,8 +245,13 @@ const ChatInput = () => {
                 Logger.warnToast("AI returned empty. Try changing the Format via the ⚙️ button!");
             }
 
-        } catch (error) {
-            Logger.errorToast("AI Generation Failed: " + error);
+        } catch (error: any) {
+            // 🐛 THE "CONTEXT IS BUSY" DETECTOR
+            if (error?.toString().includes('busy')) {
+                Logger.warnToast("⏳ AI is busy (generating title). Wait a second and try again!");
+            } else {
+                Logger.errorToast("AI Generation Failed: " + error);
+            }
         } finally {
             setIsEnhancing(false); 
             setEnhanceProgress(0);
