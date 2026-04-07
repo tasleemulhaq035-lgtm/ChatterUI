@@ -103,11 +103,22 @@ const ChatInput = () => {
     }
 
     // ==========================================
-    // ⚡ LIVE ENHANCER STATES
+    // ⚡ LIVE ENHANCER STATES & FORMAT SELECTOR
     // ==========================================
     const [showModifiers, setShowModifiers] = useState(false);
     const [isEnhancing, setIsEnhancing] = useState(false);
     const [enhanceProgress, setEnhanceProgress] = useState(0);
+
+    // Format Cycler Logic
+    const formats = ['Auto', 'Llama 3', 'ChatML', 'Alpaca', 'Mistral', 'Raw'];
+    const [formatIndex, setFormatIndex] = useState(0);
+    const currentFormatName = formats[formatIndex];
+
+    const cycleFormat = () => {
+        const nextIndex = (formatIndex + 1) % formats.length;
+        setFormatIndex(nextIndex);
+        Logger.infoToast(`⚙️ Format set to: ${formats[nextIndex]}`);
+    }
 
     const getModeConfig = (mode: string) => {
         switch(mode) {
@@ -120,7 +131,7 @@ const ChatInput = () => {
         }
     }
 
-    // ⚡ THE SMART AUTO-DETECTING AI ENGINE
+    // ⚡ THE MASTERMIND ENGINE
     const runRealEnhancer = async (mode: string) => {
         if (nowGenerating) {
             Logger.warnToast("Wait for the AI to finish chatting first!");
@@ -147,47 +158,46 @@ const ChatInput = () => {
         let max_tokens = 500;
         switch(mode) {
             case 'fix':
-                instruction = "Fix all grammar, spelling, and punctuation errors. Make it sound natural.";
+                instruction = "Fix all grammar and spelling errors in the user's input. Only output the corrected text.";
                 break;
             case 'logic':
-                instruction = "Rewrite this prompt to explicitly demand strict, step-by-step reasoning and factual accuracy.";
+                instruction = "Rewrite the user's prompt to explicitly demand strict, step-by-step reasoning and factual accuracy.";
                 break;
             case 'fun':
-                instruction = "Rewrite this prompt to be highly engaging, fun, and include natural emojis.";
+                instruction = "Rewrite the user's prompt to be highly engaging, fun, and include natural emojis.";
                 break;
             case 'enhance_normal':
-                instruction = "Rewrite this short prompt to be clearer, more detailed, and highly effective.";
+                instruction = "Rewrite the user's prompt to be clearer, more detailed, and highly effective.";
                 break;
             case 'enhance_create':
-                instruction = "Rewrite this prompt into a highly detailed instruction using the C.R.E.A.T.E framework (Character, Request, Example, Adjustments, Type of output, Extra Guidance).";
+                instruction = "Rewrite the user's prompt into a highly detailed instruction using the C.R.E.A.T.E framework (Character, Request, Example, Adjustments, Type of output, Extra Guidance).";
                 max_tokens = 800; 
                 break;
         }
 
-        // 🧠 SMART FORMATTER: Automatically uses the correct tags for Llama 3, Mistral, or default!
-        let sysStart = "<|im_start|>system\n";
-        let sysEnd = "<|im_end|>\n";
-        let userStart = "<|im_start|>user\n";
-        let asstStart = "<|im_end|>\n<|im_start|>assistant\n";
-
-        if (loadedModelName.includes('llama')) {
-            sysStart = "<|start_header_id|>system<|end_header_id|>\n\n";
-            sysEnd = "<|eot_id|>";
-            userStart = "<|start_header_id|>user<|end_header_id|>\n\n";
-            asstStart = "<|eot_id|><|start_header_id|>assistant<|end_header_id|>\n\n";
-        } else if (loadedModelName.includes('mistral')) {
-            sysStart = "<s>[INST] ";
-            sysEnd = " ";
-            userStart = "";
-            asstStart = " [/INST] ";
-        } else if (loadedModelName.includes('alpaca')) {
-            sysStart = "";
-            sysEnd = "\n\n";
-            userStart = "### Instruction:\n";
-            asstStart = "\n\n### Response:\n";
+        let activeFormat = currentFormatName;
+        if (activeFormat === 'Auto') {
+            if (loadedModelName.includes('llama')) activeFormat = 'Llama 3';
+            else if (loadedModelName.includes('mistral')) activeFormat = 'Mistral';
+            else if (loadedModelName.includes('alpaca')) activeFormat = 'Alpaca';
+            else activeFormat = 'ChatML'; 
         }
 
-        const metaPrompt = `${sysStart}You are an elite text editor. Your ONLY task is to apply the following instruction to the Input text. Output ONLY the final transformed text. Do not add quotes, explanations, or conversational filler.${sysEnd}${userStart}Instruction: ${instruction}\nInput text: ${newMessage}${asstStart}`;
+        let metaPrompt = "";
+        let stopTokens = ["<|im_end|>", "</s>", "[/INST]", "<|eot_id|>"];
+
+        if (activeFormat === 'Llama 3') {
+            metaPrompt = `<|start_header_id|>system<|end_header_id|>\n\nYou are a precise text-processing AI. You only execute the instruction on the provided input. You never add conversational filler.<|eot_id|><|start_header_id|>user<|end_header_id|>\n\nInstruction: ${instruction}\n\nInput: ${newMessage}<|eot_id|><|start_header_id|>assistant<|end_header_id|>\n\n`;
+        } else if (activeFormat === 'ChatML') {
+            metaPrompt = `<|im_start|>system\nYou are a precise text-processing AI. You only execute the instruction on the provided input. You never add conversational filler.<|im_end|>\n<|im_start|>user\nInstruction: ${instruction}\n\nInput: ${newMessage}<|im_end|>\n<|im_start|>assistant\n`;
+        } else if (activeFormat === 'Alpaca') {
+            metaPrompt = `Below is an instruction that describes a task, paired with an input that provides further context. Write a response that appropriately completes the request.\n\n### Instruction:\n${instruction}\n\n### Input:\n${newMessage}\n\n### Response:\n`;
+            stopTokens.push("### Instruction:", "### Input:");
+        } else if (activeFormat === 'Mistral') {
+            metaPrompt = `<s>[INST] You are a precise text-processing AI. Execute this instruction on the input. Do not add conversational filler.\n\nInstruction: ${instruction}\n\nInput: ${newMessage} [/INST]`;
+        } else {
+            metaPrompt = `System: You are a precise text editor. Output ONLY the rewritten text.\nInstruction: ${instruction}\nInput: ${newMessage}\nOutput:\n`;
+        }
 
         let generatedText = "";
 
@@ -196,9 +206,9 @@ const ChatInput = () => {
                 {
                     prompt: metaPrompt,
                     n_predict: max_tokens, 
-                    temperature: 0.2, // Slightly higher so it doesn't freeze up, but low enough to stop hallucinations
+                    temperature: 0.1, 
                     penalty_repeat: 1.15, 
-                    stop: ["<|im_end|>", "</s>", "[/INST]", "<|eot_id|>", "Explanation:", "Here is the"], 
+                    stop: stopTokens, 
                     emit_partial_completion: true, 
                 },
                 (data: any) => {
@@ -211,28 +221,21 @@ const ChatInput = () => {
 
             setEnhanceProgress(100);
 
-            // 🧹 SMART POST-PROCESS CLEANER
+            // 🧹 AGGRESSIVE TERMINATOR SCRUBBER (Annihilates "Answer:" and quotes)
             let finalText = result?.text ? result.text.trim() : generatedText.trim();
             
-            // Strip surrounding quotes
-            if (finalText.startsWith('"') && finalText.endsWith('"')) {
-                finalText = finalText.substring(1, finalText.length - 1).trim();
-            }
-            if (finalText.startsWith("'") && finalText.endsWith("'")) {
-                finalText = finalText.substring(1, finalText.length - 1).trim();
-            }
+            // 1. Destroy prefix garbage like "Answer:", "Output:", "**Response:**", etc.
+            const prefixRegex = /^(answer:|output:|response:|enhanced prompt:|fixed text:|\*\*answer:\*\*|\*\*output:\*\*|here is the.*?:|sure,.*?:|here's the.*?:|here is your.*?:|\*answer\*|\*output\*)/i;
+            finalText = finalText.replace(prefixRegex, '').trim();
 
-            // Remove rogue stop tokens that snuck in
-            const stopTokens = ["<|im_end|>", "</s>", "[/INST]", "<|eot_id|>"];
-            for (const token of stopTokens) {
-                finalText = finalText.replace(token, "");
-            }
+            // 2. Destroy surrounding quotation marks (standard and smart quotes)
+            finalText = finalText.replace(/^["'“”]([\s\S]*?)["'“”]$/g, '$1').trim();
 
-            if (finalText) {
-                setNewMessage(finalText.trim());
+            if (finalText && finalText.length > 0) {
+                setNewMessage(finalText);
                 Logger.infoToast(`✅ Enhancement Complete!`);
             } else {
-                Logger.warnToast("AI returned empty. Try again.");
+                Logger.warnToast("AI returned empty. Try changing the Format via the ⚙️ button!");
             }
 
         } catch (error) {
@@ -302,6 +305,16 @@ const ChatInput = () => {
             {/* ========================================== */}
             {showModifiers && !isEnhancing && (
                 <Animated.View entering={FadeIn} exiting={FadeOut} style={{ flexDirection: 'column', alignItems: 'flex-start', paddingHorizontal: 12, paddingBottom: 8, rowGap: 8 }}>
+                    
+                    {/* THE FORMAT SELECTOR BUTTON */}
+                    <TouchableOpacity 
+                        onPress={cycleFormat}
+                        style={{ paddingVertical: 6, paddingHorizontal: 12, backgroundColor: color.primary._700, borderRadius: 16, marginBottom: 4 }}>
+                        <Text style={{ color: color.text._100, fontWeight: 'bold', fontSize: 11 }}>
+                            ⚙️ Format: {currentFormatName}
+                        </Text>
+                    </TouchableOpacity>
+
                     {['fix', 'logic', 'fun', 'enhance_normal', 'enhance_create'].map((mode) => {
                         const config = getModeConfig(mode);
                         return (
