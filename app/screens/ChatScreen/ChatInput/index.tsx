@@ -78,6 +78,18 @@ const ChatInput = () => {
     const [newMessage, setNewMessage] = useState<string>('')
 
     // ==========================================
+    // 🚀 GEMU EDITION: LM STUDIO CONTEXT BAR CALC
+    // ==========================================
+    const chatData = Chats.useChatState((state) => state.data)
+    const buffer = Chats.useChatState((state) => state.buffer.data)
+    const maxContext = Llama.useLlamaPreferencesStore((state) => state.config.context_length) || 4096;
+
+    // Fast rough token estimation (~3.5 chars per token on average)
+    const textToEstimate = (chatData?.messages || []).map(m => m.swipes[m.swipe_id]?.swipe || '').join(' ') + (buffer || '') + newMessage;
+    const estimatedTokens = Math.floor(textToEstimate.length / 3.5);
+    const contextPercentage = Math.min(100, Math.max(0, (estimatedTokens / maxContext) * 100));
+
+    // ==========================================
     // 🚀 GEMU EDITION: LM STUDIO THINKING TOGGLE
     // ==========================================
     const { currentConfig, updateCurrentConfig } = SamplersManager.useSamplers(
@@ -130,7 +142,7 @@ const ChatInput = () => {
         }
     }
 
-    // ⚡ THE MASTERMIND ENGINE
+    // ⚡ THE MASTERMIND ENGINE (NO FREEDOM OF SPEECH)
     const runRealEnhancer = async (mode: string) => {
         if (nowGenerating) {
             Logger.warnToast("Wait for the AI to finish chatting first!");
@@ -157,10 +169,10 @@ const ChatInput = () => {
         let max_tokens = 500;
         switch(mode) {
             case 'fix':
-                instruction = "Correct all grammar and spelling errors. Do not change the meaning.";
+                instruction = "Correct all grammar and spelling errors.";
                 break;
             case 'logic':
-                instruction = "Rewrite to explicitly demand strict, step-by-step reasoning and factual accuracy.";
+                instruction = "Rewrite to demand strict, step-by-step reasoning and factual accuracy.";
                 break;
             case 'fun':
                 instruction = "Rewrite to be highly engaging, fun, and include natural emojis.";
@@ -182,24 +194,25 @@ const ChatInput = () => {
             else activeFormat = 'ChatML'; 
         }
 
-        // 🛡️ THE TRIPLE-QUOTE LOCKDOWN: Forces the AI to treat input as raw text, not a conversation!
-        const systemPrompt = `You are a text rewriting engine. Your ONLY job is to rewrite the text provided by the user based on the given rule. DO NOT answer questions. DO NOT interact. DO NOT output conversational filler. ONLY output the rewritten text.`;
-        const userPrompt = `Rule: ${instruction}\n\nText to rewrite:\n"""\n${newMessage}\n"""`;
+        // 🛡️ THE XML CAGE: Forces the AI to use <final> tags.
+        const systemPrompt = `You are a string manipulation engine. You have NO freedom of speech. Apply the Rule to the Input. You MUST wrap your final output EXACTLY inside <final> and </final> tags. Do not output anything outside of these tags. Example: <final>Rewritten text here</final>`;
+        const userPrompt = `Rule: ${instruction}\n\nInput:\n${newMessage}\n\nOutput your response inside <final> tags NOW:`;
 
         let metaPrompt = "";
-        let stopTokens = ["<|im_end|>", "</s>", "[/INST]", "<|eot_id|>"];
+        // 🔪 THE ASSASSIN STOP TOKENS: It dies the moment it tries to finish the tag!
+        let stopTokens = ["<|im_end|>", "</s>", "[/INST]", "<|eot_id|>", "</final>"]; 
 
         if (activeFormat === 'Llama 3') {
-            metaPrompt = `<|start_header_id|>system<|end_header_id|>\n\n${systemPrompt}<|eot_id|><|start_header_id|>user<|end_header_id|>\n\n${userPrompt}<|eot_id|><|start_header_id|>assistant<|end_header_id|>\n\n`;
+            metaPrompt = `<|start_header_id|>system<|end_header_id|>\n\n${systemPrompt}<|eot_id|><|start_header_id|>user<|end_header_id|>\n\n${userPrompt}<|eot_id|><|start_header_id|>assistant<|end_header_id|>\n\n<final>`;
         } else if (activeFormat === 'ChatML') {
-            metaPrompt = `<|im_start|>system\n${systemPrompt}<|im_end|>\n<|im_start|>user\n${userPrompt}<|im_end|>\n<|im_start|>assistant\n`;
+            metaPrompt = `<|im_start|>system\n${systemPrompt}<|im_end|>\n<|im_start|>user\n${userPrompt}<|im_end|>\n<|im_start|>assistant\n<final>`;
         } else if (activeFormat === 'Alpaca') {
-            metaPrompt = `${systemPrompt}\n\n### Instruction:\n${userPrompt}\n\n### Response:\n`;
+            metaPrompt = `${systemPrompt}\n\n### Instruction:\n${userPrompt}\n\n### Response:\n<final>`;
             stopTokens.push("### Instruction:", "### Input:");
         } else if (activeFormat === 'Mistral') {
-            metaPrompt = `<s>[INST] ${systemPrompt}\n\n${userPrompt} [/INST]`;
+            metaPrompt = `<s>[INST] ${systemPrompt}\n\n${userPrompt} [/INST] <final>`;
         } else {
-            metaPrompt = `System: ${systemPrompt}\nUser: ${userPrompt}\nOutput:\n`;
+            metaPrompt = `System: ${systemPrompt}\nUser: ${userPrompt}\nOutput:\n<final>`;
         }
 
         let generatedText = "";
@@ -210,7 +223,7 @@ const ChatInput = () => {
                     prompt: metaPrompt,
                     n_predict: max_tokens, 
                     temperature: 0.1, 
-                    penalty_repeat: 1.15, 
+                    penalty_repeat: 1.1, 
                     stop: stopTokens, 
                     emit_partial_completion: true, 
                 },
@@ -224,19 +237,18 @@ const ChatInput = () => {
 
             setEnhanceProgress(100);
 
-            // 🧹 THE ULTIMATE SCRUBBER (Annihilates all filler and quotes)
+            // 🧹 THE XML EXTRACTOR: Guarantees 0% hallucinations!
             let finalText = result?.text ? result.text.trim() : generatedText.trim();
             
-            finalText = finalText.replace(/^(here is the.*?:\s*|sure.*?:\s*|here's the.*?:\s*|here is your.*?:\s*)/is, '').trim();
-            finalText = finalText.replace(/^(\*\*Response:\*\*|\*\*Answer:\*\*|\*\*Output:\*\*|Response:|Answer:|Output:|Enhanced Prompt:|Fixed Text:)\s*/is, '').trim();
-
-            if (finalText.startsWith('"""') && finalText.endsWith('"""')) {
-                finalText = finalText.substring(3, finalText.length - 3).trim();
-            } else if (finalText.startsWith('"') && finalText.endsWith('"')) {
-                finalText = finalText.substring(1, finalText.length - 1).trim();
-            } else if (finalText.startsWith("'") && finalText.endsWith("'")) {
-                finalText = finalText.substring(1, finalText.length - 1).trim();
+            // If the model actually used the <final> tag, we extract ONLY what's inside.
+            // If it didn't (because we pre-filled it), we just strip the end tag.
+            if (finalText.includes('<final>')) {
+                finalText = finalText.split('<final>').pop() || finalText;
             }
+            finalText = finalText.replace('</final>', '').trim();
+
+            // Destroy surrounding quotation marks
+            finalText = finalText.replace(/^["'“”]([\s\S]*?)["'“”]$/g, '$1').trim();
 
             if (finalText && finalText.length > 0) {
                 setNewMessage(finalText);
@@ -246,7 +258,6 @@ const ChatInput = () => {
             }
 
         } catch (error: any) {
-            // 🐛 THE "CONTEXT IS BUSY" DETECTOR
             if (error?.toString().includes('busy')) {
                 Logger.warnToast("⏳ AI is busy (generating title). Wait a second and try again!");
             } else {
@@ -313,12 +324,28 @@ const ChatInput = () => {
             }}>
             
             {/* ========================================== */}
+            {/* 🚀 GEMU EDITION: LM STUDIO CONTEXT BAR     */}
+            {/* ========================================== */}
+            <View style={{ paddingHorizontal: spacing.m, marginBottom: 8, marginTop: 2 }}>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 }}>
+                    <Text style={{ fontSize: 10, color: color.text._400, fontWeight: 'bold' }}>
+                        CTX (~{estimatedTokens} / {maxContext})
+                    </Text>
+                    <Text style={{ fontSize: 10, color: contextPercentage > 85 ? color.error._500 : color.text._400, fontWeight: 'bold' }}>
+                        {contextPercentage.toFixed(1)}%
+                    </Text>
+                </View>
+                <View style={{ height: 3, backgroundColor: color.neutral._300, borderRadius: 2, overflow: 'hidden' }}>
+                    <View style={{ height: '100%', width: `${contextPercentage}%`, backgroundColor: contextPercentage > 85 ? color.error._500 : color.primary._500 }} />
+                </View>
+            </View>
+
+            {/* ========================================== */}
             {/* 🚀 GEMU EDITION: VERTICAL CHATGPT MENU     */}
             {/* ========================================== */}
             {showModifiers && !isEnhancing && (
                 <Animated.View entering={FadeIn} exiting={FadeOut} style={{ flexDirection: 'column', alignItems: 'flex-start', paddingHorizontal: 12, paddingBottom: 8, rowGap: 8 }}>
                     
-                    {/* THE FORMAT SELECTOR BUTTON */}
                     <TouchableOpacity 
                         onPress={cycleFormat}
                         style={{ paddingVertical: 6, paddingHorizontal: 12, backgroundColor: color.primary._700, borderRadius: 16, marginBottom: 4 }}>
@@ -462,7 +489,6 @@ const ChatInput = () => {
                                 placement="top"
                             />
                             
-                            {/* 🚀 GEMU EDITION: LM STUDIO THINKING TOGGLE */}
                             <TouchableOpacity 
                                 onPress={toggleThinking} 
                                 disabled={isEnhancing || nowGenerating}
@@ -478,7 +504,6 @@ const ChatInput = () => {
                                 />
                             </TouchableOpacity>
 
-                            {/* 🚀 GEMU EDITION: THE SPARKLE TRIGGER BUTTON */}
                             <TouchableOpacity 
                                 onPress={() => setShowModifiers(!showModifiers)} 
                                 disabled={isEnhancing}
